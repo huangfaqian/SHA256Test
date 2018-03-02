@@ -2,31 +2,6 @@
 ; SHA256.asm
 
 .DATA?
-SA      DD ?
-SB      DD ?
-SC      DD ?
-SD      DD ?
-SE      DD ?
-SF      DD ?
-SG      DD ?
-SH      DD ?
-
-W0      DD ?
-W1      DD ?
-W2      DD ?
-W3      DD ?
-W4      DD ?
-W5      DD ?
-W6      DD ?
-W7      DD ?
-W8      DD ?
-W9      DD ?
-W10     DD ?
-W11     DD ?
-W12     DD ?
-W13     DD ?
-W14     DD ?
-W15     DD ?
 
 .CONST
 SHUFFLE_BYTE_FLIP_MASK DD 0C0D0E0FH, 08090A0BH, 04050607H, 00010203H
@@ -39,6 +14,26 @@ K256    DD   428A2F98H,  71374491H, 0B5C0FBCFH, 0E9B5DBA5H,  3956C25BH,  59F111F
         DD  0A2BFE8A1H, 0A81A664BH, 0C24B8B70H, 0C76C51A3H, 0D192E819H, 0D6990624H, 0F40E3585H,  106AA070H
         DD   19A4C116H,  1E376C08H,  2748774CH,  34B0BCB5H,  391C0CB3H,  4ED8AA4AH,  5B9CCA4FH,  682E6FF3H
         DD   748F82EEH,  78A5636FH,  84C87814H,  8CC70208H,  90BEFFFAH, 0A4506CEBH, 0BEF9A3F7H, 0C67178F2H
+
+MSG_SEG SEGMENT ALIGN(32) 'DATA'
+MSG DD 61626380H ; 0
+    DD 00000000H ; 1
+    DD 00000000H ; 2
+    DD 00000000H ; 3
+    DD 00000000H ; 4
+    DD 00000000H ; 5
+    DD 00000000H ; 6
+    DD 00000000H ; 7
+    DD 00000000H ; 8
+    DD 00000000H ; 9
+    DD 00000000H ; 10
+    DD 00000000H ; 11
+    DD 00000000H ; 12
+    DD 00000000H ; 13
+    DD 00000000H ; 14
+    DD 00000018H ; 15
+MSG_SEG ENDS
+
 .code
 ; initial hash value
 H0      EQU     6A09E667H
@@ -61,14 +56,7 @@ ENDM
 
 ; Performs the SHA-256 Maj calculation
 ; Maj = a(b^c)+bc
-MAJ MACRO a, b, c
-    MOV EDX, b
-    MOV ESI, EDX
-    XOR EDX, c
-    AND EAX, EDX
-    AND ESI, c
-    OR  EAX, ESI
-ENDM
+
 
 ; Performs the SHA-256 Sigma0 calculation
 ; Sigma0 = ROTR2^ROTR13^ROTR22
@@ -143,44 +131,116 @@ SCHEDULE MACRO W0, W1, W9, W14
     MOV W0, ECX
 ENDM
 
+
+ROUND_AND_KW MACRO a, b, c, d, e, f, g, h, r
+    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 32]
+    RORX    S1, e, 6                ; S1 = e>>>6
+    RORX    S1T, e, 11              ; S1T = e>>>11
+    RORX    S0, a, 2                ; S0 = a>>>2
+    RORX    S0T, a, 13              ; S0T = a>>>13
+    MOV     CHS, f                  ; CHS = f
+    MOV     MAJ, a                  ; MAJ = a
+    MOV     MAJT, a                 ; MAJT = a
+    
+    VPADDD  X0, X0, YMMWORD PTR [K256 + 0 * 32]
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
+    XOR     CHS, g                  ; CHS = f^g
+    OR      MAJ, b                  ; MAJ = a|b
+    AND     MAJT, b                 ; MAJT = a&b
+
+    VMOVDQA YMMWORD PTR [MSG + 0 * 32], X0
+    RORX    S1T, e, 25              ; S1T = e>>>25
+    RORX    S0T, a, 22              ; S0T = a>>>22
+    AND     CHS, e                  ; CHS = (f^g)&e
+    AND     MAJ, c                  ; MAJ = (a|b)&c
+    
+    ADD     h, [MSG + r * 4]        ; a := h = h + K + W
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11) ^ (e>>>25)
+    XOR     CHS, g                  ; CHS = ((f^g)&e)^g
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13) ^ (a>>>22)
+    OR      MAJ, MAJT               ; MAJ = ((a|b)&c)|(a&b)
+    
+    ADD     S1, CHS                 ; S1 = Sigma1 + Ch
+    ADD     S0, MAJ                 ; S0 = Sigma0 + Maj
+
+    ADD     h, S1                   ; a := h = h + Sigma1 + Ch + K + W
+    
+    ADD     d, h                    ; d := d = d + (h + Sigma1 + Ch + K + W)
+    ADD     h, S0                   ; a := h = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
+ENDM
+
+ROUND MACRO a, b, c, d, e, f, g, h, r
+    RORX    S1, e, 6                ; S1 = e>>>6
+    RORX    S1T, e, 11              ; S1T = e>>>11
+    RORX    S0, a, 2                ; S0 = a>>>2
+    RORX    S0T, a, 13              ; S0T = a>>>13
+    MOV     CHS, f                  ; CHS = f
+    MOV     MAJ, a                  ; MAJ = a
+    MOV     MAJT, a                 ; MAJT = a
+    
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
+    XOR     CHS, g                  ; CHS = f^g
+    OR      MAJ, b                  ; MAJ = a|b
+    AND     MAJT, b                 ; MAJT = a&b
+
+    RORX    S1T, e, 25              ; S1T = e>>>25
+    RORX    S0T, a, 22              ; S0T = a>>>22
+    AND     CHS, e                  ; CHS = (f^g)&e
+    AND     MAJ, c                  ; MAJ = (a|b)&c
+    
+    ADD     h, [MSG + r * 4]        ; a := h = h + K + W
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11) ^ (e>>>25)
+    XOR     CHS, g                  ; CHS = ((f^g)&e)^g
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13) ^ (a>>>22)
+    OR      MAJ, MAJT               ; MAJ = ((a|b)&c)|(a&b)
+    
+    ADD     S1, CHS                 ; S1 = Sigma1 + Ch
+    ADD     S0, MAJ                 ; S0 = Sigma0 + Maj
+
+    ADD     h, S1                   ; a := h = h + Sigma1 + Ch + K + W
+    
+    ADD     d, h                    ; d := d = d + (h + Sigma1 + Ch + K + W)
+    ADD     h, S0                   ; a := h = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
+ENDM
+
 a   EQU     EAX
 b   EQU     EBX
 c   EQU     ECX
 d   EQU     EDX
 e   EQU     ESI
 f   EQU     EDI
-g   EQU     E8D
-h   EQU     E9D
+g   EQU     R8D
+h   EQU     R9D
 
 X0  EQU     YMM0
 X1  EQU     YMM1
 X2  EQU     YMM2
 X3  EQU     YMM3
 
-MSG_SEG SEGMENT ALIGN(32) 'CONST'
-MSG DD 61626380H ; 0
-    DD 00000000H ; 1
-    DD 00000000H ; 2
-    DD 00000000H ; 3
-    DD 00000000H ; 4
-    DD 00000000H ; 5
-    DD 00000000H ; 6
-    DD 00000000H ; 7
-    DD 00000000H ; 8
-    DD 00000000H ; 9
-    DD 00000000H ; 10
-    DD 00000000H ; 11
-    DD 00000000H ; 12
-    DD 00000000H ; 13
-    DD 00000000H ; 14
-    DD 00000018H ; 15
-MSG_SEG ENDS
+Y0  EQU     YMM4
+Y1  EQU     YMM5
+Y2  EQU     YMM6
+Y3  EQU     YMM7
+
+T0  EQU     R10D
+T1  EQU     R11D
+T2  EQU     R12D
+T3  EQU     R13D
+T4  EQU     R14D
+T5  EQU     R15D
+
+S0      EQU     R10D    ; Sigma0
+S0T     EQU     R11D    ; Sigma0
+S1      EQU     R12D    ; Sigma1
+S1T     EQU     R13D    ; Sigma1
+CHS     EQU     R14D    ; Ch
+MAJ     EQU     R15D
+MAJT    EQU     EBP
 
 SHA256D PROC
 
-    MOV RAX, 0
-    VMOVDQU  X0, YMMWORD PTR [MSG + 0 * 32]
-    ;
     ;;MOV EAX, SHUFFLE_BYTE_FLIP_MASK
     ;MOVDQA   XMM1, XMMWORD PTR [SHUFFLE_BYTE_FLIP_MASK]
     ;VPALIGNR     YMM1, YMM7, YMM6, 4
@@ -189,109 +249,165 @@ SHA256D PROC
     ;RDTSC
     ;;PUSH EAX
     ;;PUSH EDX
-    ;; t = 0, a0 := H0, b0 := H1, c0 := H2, d0 := H3, e0 := H4, f0 := H5, g0 := H6, h0 := H7
-    ;x0 = H4
-    ;y0 = H5
-    ;z0 = H6
-    ;CH0 = (x0 AND y0) XOR ((NOT x0) AND z0)
-    ;
-    ;x1 = H0
-    ;y1 = H1
-    ;z1 = H2
-    ;MAJ0 = (x1 AND y1) XOR (x1 AND z1) XOR (y1 AND z1)
-;
-    ;x2 = H0
-    ;ROTR2 = (x2 SHR 2) OR ((x2 SHL 30) AND 0FFFFFFFFH)
-    ;ROTR13 = (x2 SHR 13) OR ((x2 SHL 19) AND 0FFFFFFFFH)
-    ;ROTR22 = (x2 SHR 22) OR ((x2 SHL 10) AND 0FFFFFFFFH)
-    ;SIGMA00 = ROTR2 XOR ROTR13 XOR ROTR22
-;
-    ;x3 = H4
-    ;ROTR6 = (x3 SHR 6) OR ((x3 SHL 26) AND 0FFFFFFFFH)
-    ;ROTR11 = (x3 SHR 11) OR ((x3 SHL 21) AND 0FFFFFFFFH)
-    ;ROTR25 = (x3 SHR 25) OR ((x3 SHL 7) AND 0FFFFFFFFH)
-    ;SIGMA10 = ROTR6 XOR ROTR11 XOR ROTR25
-;
-    ;T10 = (H7 + SIGMA10 + CH0 + K0) AND 0FFFFFFFFH ; except W
-    ;T20 = (SIGMA00 + MAJ0) AND 0FFFFFFFFH
-    ;; a = T1 + T2
-    ;MOV EAX, T10 + T20
-    ;ADD EAX, W0
-    ;MOV SH, EAX
-    ;; e = d + T1
-    ;MOV EBX, (H3 + T10) AND 0FFFFFFFFH
-    ;ADD EBX, W0
-    ;MOV SD, EBX
-;
-    ;; t = 1, a1 := h, b1 := H0, c1 := H1, d1 := H2, e1 := d, f1 := H4, g1 := H5, h1 := H6
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj = a(b^c)+bc
-    ;AND EAX, H0 XOR H1
-    ;OR  EAX, H0 AND H1
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1 = ROTR6^ROTR11^ROTR25
-    ;SIGMA1
-    ;; Ch = e(f^g)^g
-    ;AND EBX, H4 XOR H5
-    ;XOR EBX, H5
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;ADD ECX, (H6 + K1) AND 0FFFFFFFFH
-    ;ADD ECX, EBX
-    ;ADD ECX, W1
-    ;; e = d + T1
-    ;MOV EBX, H2
-    ;ADD EBX, ECX
-    ;MOV SC, EBX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SG
-;
-    ;; t = 2, a2 := g, b2 := h, c2 := H0, d2 := H1, e2 := c, f2 := d, g2 := H4, h2 := H5
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj = a(b^c)+bc
-    ;MAJ EAX, SH, H0
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1 = ROTR6 XOR ROTR11 XOR ROTR25
-    ;SIGMA1
-    ;; Ch = e(f^g)^g
-    ;CHO EBX, SD, H4
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;ADD ECX, (H5 + K2) AND 0FFFFFFFFH
-    ;ADD ECX, EBX
-    ;ADD ECX, W2
-    ;; e = d + T1
-    ;MOV EBX, H1
-    ;ADD EBX, ECX
-    ;MOV SB, EBX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SF
-;
-    ;; t = 3, a3 := f, b3 := g, c3 := h, d3 := H0, e3 := b, f3 := c, g3 := d, h3 := H4
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj = a(b^c)+bc
-    ;MAJ EAX, SG, SH
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1 = ROTR6 XOR ROTR11 XOR ROTR25
-    ;SIGMA1
-    ;; Ch = e(f^g)^g
-    ;CHO EBX, SC, SD
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;ADD ECX, (H4 + K3) AND 0FFFFFFFFH
-    ;ADD ECX, EBX
-    ;ADD ECX, W3
-    ;; e = d + T1
-    ;MOV EBX, H0
-    ;ADD EBX, ECX
-    ;MOV SA, EBX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SE
-;
-    ;; t = 4, a4 := e, b4 := f, c4 := g, d4 := h, e4 := a, f4 := b, g4 := c, h4 := d
+    ; t = 0, a0 := a(H0), b0 := b(H1), c0 := c(H2), d0 := d(H3), e0 := e(H4), f0 := f(H5), g0 := g(H6), h0 := h(H7)
+    a0  EQU     H0
+    b0  EQU     H1
+    c0  EQU     H2
+    d0  EQU     H3
+    e0  EQU     H4
+    f0  EQU     H5
+    g0  EQU     H6
+    h0_ EQU     H7
+    Sigma00 = ((a0 SHR 2) OR (a0 SHL 30)) XOR ((a0 SHR 13) OR (a0 SHL 19)) XOR ((a0 SHR 22) OR (a0 SHL 10))
+    Sigma10 = ((e0 SHR 6) OR (e0 SHL 26)) XOR ((e0 SHR 11) OR (e0 SHL 21)) XOR ((e0 SHR 25) OR (e0 SHL 7))
+    Ch0 = ((f0 XOR g0) AND e0) XOR g0   ; CHS = ((f^g)&e)^g
+    Maj0 = ((a0 OR b0) AND c0) OR (a0 AND b0)    ; MAJ = ((a|b)&c)|(a&b)
+    
+    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 32]
+
+    MOV     d, LOW32(d0 + h0_ + Sigma10 + Ch0)    ; e := d = d + (h + Sigma1 + Ch)
+    
+    VPADDD  X0, X0, YMMWORD PTR [K256 + 0 * 32]
+
+    MOV     h, LOW32(h0_ + Sigma10 + Ch0 + Sigma00 + Maj0)   ; a := h = (h + Sigma1 + Ch) + (Sigma0 + Maj)
+
+    VMOVDQA YMMWORD PTR [MSG + 0 * 32], X0
+
+    ADD     d, [MSG + 0 * 4]    ; e := d = d + (K + W + h + Sigma1 + Ch)
+    ADD     h, [MSG + 0 * 4]    ; a := h = (K + W + h + Sigma1 + Ch) + (Sigma0 + Maj)
+
+    ; t = 1, a1 := h, b1 := a(H0), c1 := b(H1), d1 := c(H2), e1 := d, f1 := e(H4), g1 := f(H5), h1 := g(H6)
+    a1  EQU     h
+    b1  EQU     H0
+    c1  EQU     H1
+    d1  EQU     H2
+    e1  EQU     d
+    f1  EQU     H4
+    g1  EQU     H5
+    h1_ EQU     H6
+    RORX    S1, e1, 6               ; S1 = e>>>6
+    RORX    S1T, e1, 11             ; S1T = e>>>11
+    RORX    S0, a1, 2               ; S0 = a>>>2
+    RORX    S0T, a1, 13             ; S0T = a>>>13
+    MOV     CHS, f1 XOR g1          ; CHS = f^g
+    MOV     MAJ, b1 OR c1           ; MAJ = b|c
+    MOV     MAJT, b1 AND c1         ; MAJT = b&c
+
+    MOV     g, [MSG + 1 * 4]        ; a := g = K + W
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
+    AND     CHS, e                  ; CHS = (f^g)&e
+    AND     MAJ, a                  ; MAJ = (b|c)&a
+
+    MOV     b, LOW32(d1 + h1_)      ; d := b = d + h
+    RORX    S1T, e1, 25             ; S1T = e>>>25
+    RORX    S0T, a1, 22             ; S0T = a>>>22
+    XOR     CHS, g1                 ; CHS = ((f^g)&e)^g
+    OR      MAJ, MAJT               ; MAJ = ((b|c)&a)|(b&c)
+    
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11) ^ (e>>>25)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13) ^ (a>>>22)
+    
+    ADD     S1, CHS                 ; S1 = Sigma1 + Ch
+    ADD     S0, MAJ                 ; S0 = Sigma0 + Maj
+
+    ADD     g, S1                   ; a := g = Sigma1 + Ch + K + W
+    ADD     S0, h1_                 ; S0 = h + Sigma0 + Maj
+
+    ADD     b, g                    ; d := b = d + (h + Sigma1 + Ch + K + W)
+    ADD     g, S0                   ; a := g = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
+NOP
+    ; t = 2, a2 := g, b2 := h, c2 := a(H0), d2 := b(H1), e2 := c, f2 := d, g2 := e(H4), h2 := f(H5)
+    a2  EQU     g
+    b2  EQU     h
+    c2  EQU     H0
+    d2  EQU     H1
+    e2  EQU     c
+    f2  EQU     d
+    g2  EQU     H4
+    h2_ EQU     H5
+    RORX    S1, e, 6                ; S1 = e>>>6
+    RORX    S1T, e, 11              ; S1T = e>>>11
+    RORX    S0, a, 2                ; S0 = a>>>2
+    RORX    S0T, a, 13              ; S0T = a>>>13
+    MOV     CHS, f                  ; CHS = f
+    MOV     MAJ, a                  ; MAJ = a
+    MOV     MAJT, a                 ; MAJT = a
+
+    MOV     f, [MSG + 2 * 4]        ; a := f = K + W
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
+    XOR     CHS, g2                 ; CHS = f^g
+    OR      MAJ, b                  ; MAJ = a|b
+    AND     MAJT, b                 ; MAJT = a&b
+
+    MOV     a, LOW32(d2 + h2_)      ; d := a = d + h
+    RORX    S1T, e, 25              ; S1T = e>>>25
+    RORX    S0T, a, 22              ; S0T = a>>>22
+    AND     CHS, e                  ; CHS = (f^g)&e
+    AND     MAJ, c2                 ; MAJ = (a|b)&c
+
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11) ^ (e>>>25)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13) ^ (a>>>22)
+    XOR     CHS, g2                 ; CHS = ((f^g)&e)^g
+    OR      MAJ, MAJT               ; MAJ = ((a|b)&c)|(a&b)
+
+    ADD     S1, CHS                 ; S1 = Sigma1 + Ch
+    ADD     S0, MAJ                 ; S0 = Sigma0 + Maj
+
+    ADD     f, S1                   ; a := f = Sigma1 + Ch + K + W
+    ADD     S0, h2_                 ; S0 = h + Sigma0 + Maj
+
+    ADD     a, f                    ; d := a = d + (h + Sigma1 + Ch + K + W)
+    ADD     f, S0                   ; a := f = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
+NOP
+    ; t = 3, a3 := f, b3 := g, c3 := h, d3 := a(H0), e3 := b, f3 := c, g3 := d, h3 := e(H4)
+    a3  EQU     f
+    b3  EQU     g
+    c3  EQU     h
+    d3  EQU     H0
+    e3  EQU     b
+    f3  EQU     c
+    g3  EQU     d
+    h3_ EQU     H4
+    RORX    S1, e3, 6               ; S1 = e>>>6
+    RORX    S1T, e3, 11             ; S1T = e>>>11
+    RORX    S0, a3, 2               ; S0 = a>>>2
+    RORX    S0T, a3, 13             ; S0T = a>>>13
+    MOV     CHS, f3                 ; CHS = f
+    MOV     MAJ, a3                 ; MAJ = a
+    MOV     MAJT, a3                ; MAJT = a
+
+    MOV     e, [MSG + 2 * 4]        ; a := e = K + W
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
+    XOR     CHS, g3                 ; CHS = f^g
+    OR      MAJ, b3                 ; MAJ = a|b
+    AND     MAJT, b3                ; MAJT = a&b
+    
+    MOV     h, LOW32(d3 + h3_)      ; d := h = d + h
+    RORX    S1T, e3, 25             ; S1T = e>>>25
+    RORX    S0T, a3, 22             ; S0T = a>>>22
+    AND     CHS, e3                 ; CHS = (f^g)&e
+    AND     MAJ, c3                 ; MAJ = (a|b)&c
+
+    XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11) ^ (e>>>25)
+    XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13) ^ (a>>>22)
+    XOR     CHS, g3                 ; CHS = ((f^g)&e)^g
+    OR      MAJ, MAJT               ; MAJ = ((a|b)&c)|(a&b)
+
+    ADD     S1, CHS                 ; S1 = Sigma1 + Ch
+    ADD     S0, MAJ                 ; S0 = Sigma0 + Maj
+
+    ADD     e, S1                   ; a := e = Sigma1 + Ch + K + W
+    ADD     S0, h3_                 ; S0 = h + Sigma0 + Maj
+
+    ADD     h, e                    ; d := h = d + (h + Sigma1 + Ch + K + W)
+    ADD     e, S0                   ; a := e = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
+NOP
+
+    ; t = 4, a4 := e, b4 := f, c4 := g, d4 := h, e4 := a, f4 := b, g4 := c, h4 := d
+    
     ;; Sigma0
     ;SIGMA0
     ;; Maj
@@ -308,7 +424,7 @@ SHA256D PROC
     ;UPDATE_E SH, ECX
     ;; a = T1 + T2
     ;UPDATE_A ECX, EAX, SD
-;
+
     ;; t = 5, a5 := d, b5 := e, c5 := f, d5 := g, e5 := h, f5 := a, g5 := b, h5 := c
     ;; Sigma0
     ;SIGMA0
@@ -363,7 +479,52 @@ SHA256D PROC
     ;; a = T1 + T2
     ;UPDATE_A ECX, EAX, SA
 ;
-    ;; t = 8, a8 := a, b7 := b, c8 := c, d8 := d, e8 := e, f8 := f, g8 := g, h8 := h
+    ; t = 8, a8 := a, b7 := b, c8 := c, d8 := d, e8 := e, f8 := f, g8 := g, h8 := h
+    
+    ;
+    ;
+;START_MARKER
+MOV EBX, 111
+DB 64H, 67H, 90H
+
+    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 32]
+    RORX    S1, e, 6                ; S1 = e>>>6
+    RORX    S1T, e, 11              ; S1T = e>>>11
+    RORX    S0, a, 2                ; S0 = a>>>2
+    RORX    S0T, a, 13              ; S0T = a>>>13
+    MOV     CHS, f                  ; CHS = f
+    MOV     MAJ, a                  ; MAJ = a
+    MOV     MAJT, a                 ; MAJT = a
+    
+    VPADDD  X0, X0, YMMWORD PTR [K256 + 0 * 32]
+    XOR     S1, S1T                 ; S1 = (e>>>6)^(e>>>11)
+    XOR     S0, S0T                 ; S0 = (a>>>2)^(a>>>13)
+    XOR     CHS, g                  ; CHS = f^g
+    OR      MAJ, b                  ; MAJ = a|b
+    AND     MAJT, b                 ; MAJT = a&b
+
+    VMOVDQA YMMWORD PTR [MSG + 0 * 32], X0
+    RORX    S1T, e, 25              ; S1T = e>>>25
+    RORX    S0T, a, 22              ; S0T = a>>>22
+    AND     CHS, e                  ; CHS = (f^g)&e
+    AND     MAJ, c                  ; MAJ = (a|b)&c
+    
+    ADD     h, [MSG + 4 * 4]        ; h = K+W+h
+    XOR     S1, S1T                 ; S1 = (e>>>6)^(e>>>11)^(e>>>25)
+    XOR     CHS, g                  ; CHS = ((f^g)&e)^g
+    XOR     S0, S0T                 ; S0 = (a>>>2)^(a>>>13)^(a>>>22)
+    OR      MAJ, MAJT               ; MAJ = ((a|b)&c)|(a&b)
+    
+    ADD     S1, CHS                 ; S1 = Sigma1+Ch
+    ADD     S0, MAJ                 ; S0 = Sigma0+Maj
+
+    ADD     h, S1                   ; h = K+W+h+Sigma1+Ch
+    
+    ADD     d, h                    ; d = d+(K+W+h+Sigma1+Ch)
+    ADD     h, S0                   ; h = (K+W+h+Sigma1+Ch)+Sigma0+Maj
+;END_MARKER
+MOV EBX, 222
+DB 64H, 67H, 90H
     ;; Sigma0
     ;SIGMA0
     ;; Maj
