@@ -45,93 +45,6 @@ H5      EQU     9B05688CH
 H6      EQU     1F83D9ABH
 H7      EQU     5BE0CD19H
 
-; Perform the SHA-256 Ch calculation:
-;   Ch(e, f, g) = (e(f^g))^g
-CHO MACRO e, f, g
-    MOV EDX, f
-    XOR EDX, g
-    AND e, EDX
-    XOR e, g
-ENDM
-
-; Performs the SHA-256 Maj calculation
-; Maj = a(b^c)+bc
-
-
-; Performs the SHA-256 Sigma0 calculation
-; Sigma0 = ROTR2^ROTR13^ROTR22
-SIGMA0 MACRO
-    MOV ECX, EAX
-    ROR ECX, 2
-    MOV EDX, ECX
-    ROR ECX, 11 ; 13 - 2
-    XOR EDX, ECX
-    ROR ECX, 9 ; 22 - 13
-    XOR ECX, EDX
-ENDM
-
-; Performs the SHA-256 Sigma1 calculation
-; Sigma1 = ROTR6^ROTR11^ROTR25
-SIGMA1 MACRO
-    MOV ECX, EBX
-    ROR ECX, 6
-    MOV EDX, ECX
-    ROR ECX, 5 ; 11 - 6
-    XOR EDX, ECX
-    ROR ECX, 14 ; 25 - 11
-    XOR ECX, EDX
-ENDM
-
-UPDATE_T1 MACRO h, Sigma1, Ch, K, W
-    ADD Sigma1, h
-    ADD Sigma1, K
-    ADD Sigma1, Ch
-    ADD Sigma1, W
-ENDM
-
-UPDATE_T2 MACRO Sigma0, Maj
-    ADD Maj, Sigma0
-ENDM
-
-UPDATE_E MACRO d, T1
-    MOV EBX, d
-    ADD EBX, T1
-    MOV d, EBX
-ENDM
-
-UPDATE_A MACRO T1, T2, a
-    ADD T2, T1
-    MOV a, T2
-ENDM
-
-; Function sigma_0
-; Performs the SHA-256 sigma 0 calculation
-
-SCHEDULE MACRO W0, W1, W9, W14
-    ; sigma_0
-    MOV ECX, W1
-    MOV EDX, ECX
-    SHR ECX, 3
-    ROR EDX, 7
-    XOR ECX, EDX
-    ROR EDX, 11 ; 18 - 7
-    XOR ECX, EDX
-    ; sigma_1
-    MOV EDX, W14
-    MOV ESI, EDX
-    SHR EDX, 10
-    ROR ESI, 17
-    XOR EDX, ESI
-    ROR ESI, 2 ; 19 - 17
-    XOR EDX, ESI
-    ; sum
-    ADD ECX, W0
-    ADD ECX, W9
-    ADD ECX, EDX
-    MOV W0, ECX
-ENDM
-
-
 ROUND_AND_KW MACRO a, b, c, d, e, f, g, h, r
     VMOVDQA X0, YMMWORD PTR [MSG + 0 * 32]
     RORX    S1, e, 6                ; S1 = e>>>6
@@ -316,7 +229,7 @@ SHA256D PROC
 
     ADD     c, g                    ; e := c = d + (h + Sigma1 + Ch + K + W)
     ADD     g, S0                   ; a := g = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
-NOP
+
     ; t = 2, a2 := g, b2 := h, c2 := a(H0), d2 := b(H1), e2 := c, f2 := d, g2 := e(H4), h2 := f(H5)
     a2  EQU     g
     b2  EQU     h
@@ -360,7 +273,7 @@ NOP
 
     ADD     b, f                    ; e := b = d + (h + Sigma1 + Ch + K + W)
     ADD     f, S0                   ; a := f = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
-NOP
+
     ; t = 3, a3 := f, b3 := g, c3 := h, d3 := a(H0), e3 := b, f3 := c, g3 := d, h3 := e(H4)
     a3  EQU     f
     b3  EQU     g
@@ -404,85 +317,22 @@ NOP
 
     ADD     a, e                    ; e := a = d + (h + Sigma1 + Ch + K + W)
     ADD     e, S0                   ; a := e = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
-NOP
 
     ; t = 4, a4 := e, b4 := f, c4 := g, d4 := h, e4 := a, f4 := b, g4 := c, h4 := d
+    ROUND e, f, g, h, a, b, c, d, 4
     
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SF, SG
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SB, SC
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SD, ECX, EBX, K4, W4
-    ;; e = d + T1
-    ;UPDATE_E SH, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SD
+    ; t = 5, a5 := d, b5 := e, c5 := f, d5 := g, e5 := h, f5 := a, g5 := b, h5 := c
+    ROUND d, e, f, g, h, a, b, c, 5
 
-    ;; t = 5, a5 := d, b5 := e, c5 := f, d5 := g, e5 := h, f5 := a, g5 := b, h5 := c
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SE, SF
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SA, SB
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SC, ECX, EBX, K5, W5
-    ;; e = d + T1
-    ;UPDATE_E SG, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SC
-;
-    ;; t = 6, a6 := c, b6 := d, c6 := e, d6 := f, e6 := g, f6 := h, g6 := a, h6 := b
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SD, SE
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SH, SA
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SB, ECX, EBX, K6, W6
-    ;; e = d + T1
-    ;UPDATE_E SF, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SB
-;
-    ;; t = 7, a7 := b, b7 := c, c7 := d, d7 := e, e7 := f, f7 := g, g7 := h, h7 := a
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SC, SD
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SG, SH
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SA, ECX, EBX, K7, W7
-    ;; e = d + T1
-    ;UPDATE_E SE, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SA
-;
+    ; t = 6, a6 := c, b6 := d, c6 := e, d6 := f, e6 := g, f6 := h, g6 := a, h6 := b
+    ROUND c, d, e, f, g, h, a, b, 6
+
+    ; t = 7, a7 := b, b7 := c, c7 := d, d7 := e, e7 := f, f7 := g, g7 := h, h7 := a
+    ROUND b, c, d, e, f, g, h, a, 7
+
     ; t = 8, a8 := a, b7 := b, c8 := c, d8 := d, e8 := e, f8 := f, g8 := g, h8 := h
-    
-    ;
-    ;
+    ROUND a, b, c, d, e, f, g, h, 8
+
 ;START_MARKER
 MOV EBX, 111
 DB 64H, 67H, 90H
