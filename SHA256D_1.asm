@@ -296,10 +296,10 @@ SHA256D PROC
     MOV     g, [MSG + 1 * 4]        ; a := g = K + W
     XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
     XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
-    AND     CHS, e                  ; CHS = (f^g)&e
-    AND     MAJ, a                  ; MAJ = (b|c)&a
+    AND     CHS, e1                 ; CHS = (f^g)&e
+    AND     MAJ, a1                 ; MAJ = (b|c)&a
 
-    MOV     b, LOW32(d1 + h1_)      ; d := b = d + h
+    MOV     c, LOW32(d1 + h1_)      ; e := c = d + h
     RORX    S1T, e1, 25             ; S1T = e>>>25
     RORX    S0T, a1, 22             ; S0T = a>>>22
     XOR     CHS, g1                 ; CHS = ((f^g)&e)^g
@@ -314,7 +314,7 @@ SHA256D PROC
     ADD     g, S1                   ; a := g = Sigma1 + Ch + K + W
     ADD     S0, h1_                 ; S0 = h + Sigma0 + Maj
 
-    ADD     b, g                    ; d := b = d + (h + Sigma1 + Ch + K + W)
+    ADD     c, g                    ; e := c = d + (h + Sigma1 + Ch + K + W)
     ADD     g, S0                   ; a := g = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
 NOP
     ; t = 2, a2 := g, b2 := h, c2 := a(H0), d2 := b(H1), e2 := c, f2 := d, g2 := e(H4), h2 := f(H5)
@@ -326,25 +326,25 @@ NOP
     f2  EQU     d
     g2  EQU     H4
     h2_ EQU     H5
-    RORX    S1, e, 6                ; S1 = e>>>6
-    RORX    S1T, e, 11              ; S1T = e>>>11
-    RORX    S0, a, 2                ; S0 = a>>>2
-    RORX    S0T, a, 13              ; S0T = a>>>13
-    MOV     CHS, f                  ; CHS = f
-    MOV     MAJ, a                  ; MAJ = a
-    MOV     MAJT, a                 ; MAJT = a
+    RORX    S1, e2, 6               ; S1 = e>>>6
+    RORX    S1T, e2, 11             ; S1T = e>>>11
+    RORX    S0, a2, 2               ; S0 = a>>>2
+    RORX    S0T, a2, 13             ; S0T = a>>>13
+    MOV     CHS, f2                 ; CHS = f
+    MOV     MAJ, a2                 ; MAJ = a
+    MOV     MAJT, a2                ; MAJT = a
 
     MOV     f, [MSG + 2 * 4]        ; a := f = K + W
     XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
     XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
     XOR     CHS, g2                 ; CHS = f^g
-    OR      MAJ, b                  ; MAJ = a|b
-    AND     MAJT, b                 ; MAJT = a&b
+    OR      MAJ, b2                 ; MAJ = a|b
+    AND     MAJT, b2                ; MAJT = a&b
 
-    MOV     a, LOW32(d2 + h2_)      ; d := a = d + h
-    RORX    S1T, e, 25              ; S1T = e>>>25
-    RORX    S0T, a, 22              ; S0T = a>>>22
-    AND     CHS, e                  ; CHS = (f^g)&e
+    MOV     b, LOW32(d2 + h2_)      ; e := b = d + h
+    RORX    S1T, e2, 25             ; S1T = e>>>25
+    RORX    S0T, a2, 22             ; S0T = a>>>22
+    AND     CHS, e2                 ; CHS = (f^g)&e
     AND     MAJ, c2                 ; MAJ = (a|b)&c
 
     XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11) ^ (e>>>25)
@@ -358,7 +358,7 @@ NOP
     ADD     f, S1                   ; a := f = Sigma1 + Ch + K + W
     ADD     S0, h2_                 ; S0 = h + Sigma0 + Maj
 
-    ADD     a, f                    ; d := a = d + (h + Sigma1 + Ch + K + W)
+    ADD     b, f                    ; e := b = d + (h + Sigma1 + Ch + K + W)
     ADD     f, S0                   ; a := f = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
 NOP
     ; t = 3, a3 := f, b3 := g, c3 := h, d3 := a(H0), e3 := b, f3 := c, g3 := d, h3 := e(H4)
@@ -378,14 +378,14 @@ NOP
     MOV     MAJ, a3                 ; MAJ = a
     MOV     MAJT, a3                ; MAJT = a
 
-    MOV     e, [MSG + 2 * 4]        ; a := e = K + W
+    MOV     e, [MSG + 3 * 4]        ; a := e = K + W
     XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
     XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
     XOR     CHS, g3                 ; CHS = f^g
     OR      MAJ, b3                 ; MAJ = a|b
     AND     MAJT, b3                ; MAJT = a&b
     
-    MOV     h, LOW32(d3 + h3_)      ; d := h = d + h
+    MOV     a, LOW32(d3 + h3_)      ; e := a = d + h
     RORX    S1T, e3, 25             ; S1T = e>>>25
     RORX    S0T, a3, 22             ; S0T = a>>>22
     AND     CHS, e3                 ; CHS = (f^g)&e
@@ -402,7 +402,7 @@ NOP
     ADD     e, S1                   ; a := e = Sigma1 + Ch + K + W
     ADD     S0, h3_                 ; S0 = h + Sigma0 + Maj
 
-    ADD     h, e                    ; d := h = d + (h + Sigma1 + Ch + K + W)
+    ADD     a, e                    ; e := a = d + (h + Sigma1 + Ch + K + W)
     ADD     e, S0                   ; a := e = (h + Sigma1 + Ch + K + W) + (Sigma0 + Maj)
 NOP
 
