@@ -46,7 +46,7 @@ H6      EQU     1F83D9ABH
 H7      EQU     5BE0CD19H
 
 ROUND_AND_KW MACRO a, b, c, d, e, f, g, h, r
-    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 32]
+    VMOVDQA X0, YMMWORD PTR [MSG + r / 8 * 32]
     RORX    S1, e, 6                ; S1 = e>>>6
     RORX    S1T, e, 11              ; S1T = e>>>11
     RORX    S0, a, 2                ; S0 = a>>>2
@@ -55,14 +55,14 @@ ROUND_AND_KW MACRO a, b, c, d, e, f, g, h, r
     MOV     MAJ, a                  ; MAJ = a
     MOV     MAJT, a                 ; MAJT = a
     
-    VPADDD  X0, X0, YMMWORD PTR [K256 + 0 * 32]
+    VPADDD  X0, X0, YMMWORD PTR [K256 + r / 8 * 32]
     XOR     S1, S1T                 ; S1 = (e>>>6) ^ (e>>>11)
     XOR     S0, S0T                 ; S0 = (a>>>2) ^ (a>>>13)
     XOR     CHS, g                  ; CHS = f^g
     OR      MAJ, b                  ; MAJ = a|b
     AND     MAJT, b                 ; MAJT = a&b
 
-    VMOVDQA YMMWORD PTR [MSG + 0 * 32], X0
+    VMOVDQA YMMWORD PTR [MSG + r / 8 * 32], X0
     RORX    S1T, e, 25              ; S1T = e>>>25
     RORX    S0T, a, 22              ; S0T = a>>>22
     AND     CHS, e                  ; CHS = (f^g)&e
@@ -153,7 +153,12 @@ MAJ     EQU     R15D
 MAJT    EQU     EBP
 
 SHA256D PROC
-
+;;START_MARKER
+;MOV EBX, 111
+;DB 64H, 67H, 90H
+;;END_MARKER
+;MOV EBX, 222
+;DB 64H, 67H, 90H
     ;;MOV EAX, SHUFFLE_BYTE_FLIP_MASK
     ;MOVDQA   XMM1, XMMWORD PTR [SHUFFLE_BYTE_FLIP_MASK]
     ;VPALIGNR     YMM1, YMM7, YMM6, 4
@@ -331,193 +336,29 @@ SHA256D PROC
     ROUND b, c, d, e, f, g, h, a, 7
 
     ; t = 8, a8 := a, b7 := b, c8 := c, d8 := d, e8 := e, f8 := f, g8 := g, h8 := h
-    ROUND a, b, c, d, e, f, g, h, 8
+    ROUND_AND_KW a, b, c, d, e, f, g, h, 8
 
-;START_MARKER
-MOV EBX, 111
-DB 64H, 67H, 90H
+    ; t = 9, a9 := h, b9 := a, c9 := b, d9 := c, e9 := d, f9 := e, g9 := f, h9 := g
+    ROUND h, a, b, c, d, e, f, g, 9
 
-    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 32]
-    RORX    S1, e, 6                ; S1 = e>>>6
-    RORX    S1T, e, 11              ; S1T = e>>>11
-    RORX    S0, a, 2                ; S0 = a>>>2
-    RORX    S0T, a, 13              ; S0T = a>>>13
-    MOV     CHS, f                  ; CHS = f
-    MOV     MAJ, a                  ; MAJ = a
-    MOV     MAJT, a                 ; MAJT = a
-    
-    VPADDD  X0, X0, YMMWORD PTR [K256 + 0 * 32]
-    XOR     S1, S1T                 ; S1 = (e>>>6)^(e>>>11)
-    XOR     S0, S0T                 ; S0 = (a>>>2)^(a>>>13)
-    XOR     CHS, g                  ; CHS = f^g
-    OR      MAJ, b                  ; MAJ = a|b
-    AND     MAJT, b                 ; MAJT = a&b
+    ; t = 10, a10 := g, b10 := h, c10 := a, d10 := b, e10 := c, f10 := d, g10 := e, h10 := f
+    ROUND g, h, a, b, c, d, e, f, 10
 
-    VMOVDQA YMMWORD PTR [MSG + 0 * 32], X0
-    RORX    S1T, e, 25              ; S1T = e>>>25
-    RORX    S0T, a, 22              ; S0T = a>>>22
-    AND     CHS, e                  ; CHS = (f^g)&e
-    AND     MAJ, c                  ; MAJ = (a|b)&c
-    
-    ADD     h, [MSG + 4 * 4]        ; h = K+W+h
-    XOR     S1, S1T                 ; S1 = (e>>>6)^(e>>>11)^(e>>>25)
-    XOR     CHS, g                  ; CHS = ((f^g)&e)^g
-    XOR     S0, S0T                 ; S0 = (a>>>2)^(a>>>13)^(a>>>22)
-    OR      MAJ, MAJT               ; MAJ = ((a|b)&c)|(a&b)
-    
-    ADD     S1, CHS                 ; S1 = Sigma1+Ch
-    ADD     S0, MAJ                 ; S0 = Sigma0+Maj
+    ; t = 11, a11 := f, b11 := g, c11 := h, d11 := a, e11 := b, f11 := c, g11 := d, h11 := e
+    ROUND f, g, h, a, b, c, d, e, 11
 
-    ADD     h, S1                   ; h = K+W+h+Sigma1+Ch
-    
-    ADD     d, h                    ; d = d+(K+W+h+Sigma1+Ch)
-    ADD     h, S0                   ; h = (K+W+h+Sigma1+Ch)+Sigma0+Maj
-;END_MARKER
-MOV EBX, 222
-DB 64H, 67H, 90H
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SB, SC
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SF, SG
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SH, ECX, EBX, K8, W8
-    ;; e = d + T1
-    ;UPDATE_E SD, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SH
-;
-    ;; t = 9, a9 := h, b9 := a, c9 := b, d9 := c, e9 := d, f9 := e, g9 := f, h9 := g
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SA, SB
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SE, SF
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SG, ECX, EBX, K9, W9
-    ;; e = d + T1
-    ;UPDATE_E SC, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SG
-;
-    ;; t = 10, a10 := g, b10 := h, c10 := a, d10 := b, e10 := c, f10 := d, g10 := e, h10 := f
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SH, SA
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SD, SE
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SF, ECX, EBX, K10, W10
-    ;; e = d + T1
-    ;UPDATE_E SB, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SF
-;
-    ;; t = 11, a11 := f, b11 := g, c11 := h, d11 := a, e11 := b, f11 := c, g11 := d, h11 := e
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SG, SH
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SC, SD
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SE, ECX, EBX, K11, W11
-    ;; e = d + T1
-    ;UPDATE_E SA, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SE
-;
-    ;; t = 12, a12 := e, b12 := f, c12 := g, d12 := h, e12 := a, f12 := b, g12 := c, h12 := d
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SF, SG
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SB, SC
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SD, ECX, EBX, K12, W12
-    ;; e = d + T1
-    ;UPDATE_E SH, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SD
-;
-    ;; t = 13, a13 := d, b13 := e, c13 := f, d13 := g, e13 := h, f13 := a, g13 := b, h13 := c
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SE, SF
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SA, SB
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SC, ECX, EBX, K13, W13
-    ;; e = d + T1
-    ;UPDATE_E SG, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SC
-;
-    ;; t = 14, a14 := c, b14 := d, c14 := e, d14 := f, e14 := g, f14 := h, g14 := a, h14 := b
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SD, SE
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SH, SA
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SB, ECX, EBX, K14, W14
-    ;; e = d + T1
-    ;UPDATE_E SF, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SB
-;
-    ;; t = 15, a15 := b, b15 := c, c15 := d, d15 := e, e15 := f, f15 := g, g15 := h, h15 := a
-    ;; Sigma0
-    ;SIGMA0
-    ;; Maj
-    ;MAJ EAX, SC, SD
-    ;; T2 = Sigma0 + Maj
-    ;UPDATE_T2 ECX, EAX
-    ;; Sigma1
-    ;SIGMA1
-    ;; Ch
-    ;CHO EBX, SG, SH
-    ;; T1 = h + Sigma1 + Ch + K + W;
-    ;UPDATE_T1 SA, ECX, EBX, K15, W15
-    ;; e = d + T1
-    ;UPDATE_E SE, ECX
-    ;; a = T1 + T2
-    ;UPDATE_A ECX, EAX, SA
-;
+    ; t = 12, a12 := e, b12 := f, c12 := g, d12 := h, e12 := a, f12 := b, g12 := c, h12 := d
+    ROUND e, f, g, h, a, b, c, d, 12
+
+    ; t = 13, a13 := d, b13 := e, c13 := f, d13 := g, e13 := h, f13 := a, g13 := b, h13 := c
+    ROUND d, e, f, g, h, a, b, c, 13
+
+    ; t = 14, a14 := c, b14 := d, c14 := e, d14 := f, e14 := g, f14 := h, g14 := a, h14 := b
+    ROUND c, d, e, f, g, h, a, b, 14
+
+    ; t = 15, a15 := b, b15 := c, c15 := d, d15 := e, e15 := f, f15 := g, g15 := h, h15 := a
+    ROUND b, c, d, e, f, g, h, a, 15
+
     ;; t = 16, a16 := a, b7 := b, c16 := c, d16 := d, e16 := e, f16 := f, g16 := g, h16 := h
     ;SCHEDULE W0, W1, W9, W14
     ;; Sigma0
