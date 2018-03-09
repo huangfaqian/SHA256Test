@@ -32,6 +32,12 @@ MSG DD 61626380H ; 0
     DD 00000000H ; 13
     DD 00000000H ; 14
     DD 00000018H ; 15
+    DD 0
+    DD 0
+    DD 0
+    DD 0
+    DD 0
+    DD 0
 MSG_SEG ENDS
 
 .code
@@ -136,6 +142,12 @@ Y0  EQU     YMM4
 Y1  EQU     YMM5
 Y2  EQU     YMM6
 Y3  EQU     YMM7
+Y4  EQU     YMM8
+Y5  EQU     YMM9
+Y6  EQU     YMM10
+Y7  EQU     YMM11
+Y8  EQU     YMM12
+Y9  EQU     YMM13
 
 T0  EQU     R10D
 T1  EQU     R11D
@@ -159,6 +171,37 @@ SHA256D PROC
 ;;END_MARKER
 ;MOV EBX, 222
 ;DB 64H, 67H, 90H
+    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 4]   ; X0 = {W7, W6, W5, W4, W3, W2, W1, W0}
+    VMOVDQA X1, YMMWORD PTR [MSG + 1 * 4]   ; X1 = {W8, W7, W6, W5, W4, W3, W2, W1}
+    VMOVDQA X2, YMMWORD PTR [MSG + 9 * 4]   ; X2 = {00, W15, W14, W13, W12, W11, W10, W9}
+    VMOVDQA X3, YMMWORD PTR [MSG + 14 * 4]  ; X3 = {00, 00, 00, 00, 00, 00, W15, W14}
+    VPSRLD  Y0, X1, 7                       ; Y0 = X1 >> 7
+    VPSLLD  Y1, X1, 32 - 7                  ; Y1 = X1 << 25
+    VPSRLD  Y2, X1, 18                      ; Y2 = X1 >> 18
+    VPSLLD  Y3, X1, 32 - 18                 ; Y3 = X1 << 14
+    VPSRLD  Y4, X1, 3                       ; Y4 = X1 >> 3
+
+    VPOR    Y0, Y0, Y1
+    VPOR    Y2, Y2, Y3
+    VPXOR   Y0, Y0, Y2
+    VPXOR   Y0, Y0, Y4
+
+    VPSRLD  Y5, X3, 17                      ; Y5 = X3 >> 17
+    VPSLLD  Y6, X3, 32 - 17                 ; Y6 = X3 << 15
+    VPSRLD  Y7, X3, 19                      ; Y7 = X3 >> 19
+    VPSLLD  Y8, X3, 32 - 19                 ; Y8 = X3 << 13
+    VPSRLD  Y9, X3, 10                      ; Y9 = X3 >> 10
+
+    VPOR    Y5, Y5, Y6
+    VPOR    Y7, Y7, Y8
+    VPXOR   Y5, Y5, Y7
+    VPXOR   Y5, Y5, Y9
+
+    VPADDD  X0, X0, X2
+    VPADDD  Y0, Y0, Y5
+    VPADDD  X0, X0, Y0
+
+
     ;;MOV EAX, SHUFFLE_BYTE_FLIP_MASK
     ;MOVDQA   XMM1, XMMWORD PTR [SHUFFLE_BYTE_FLIP_MASK]
     ;VPALIGNR     YMM1, YMM7, YMM6, 4
