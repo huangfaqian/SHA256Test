@@ -175,39 +175,51 @@ SHA256D PROC
 ;;END_MARKER
 ;MOV EBX, 222
 ;DB 64H, 67H, 90H
-    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 4]   ; X0 = {W7, W6, W5, W4, W3, W2, W1, W0}
-    VMOVDQU X1, YMMWORD PTR [MSG + 1 * 4]   ; X1 = {W8, W7, W6, W5, W4, W3, W2, W1}
-    VMOVDQU X2, YMMWORD PTR [MSG + 9 * 4]   ; X2 = {00, W15, W14, W13, W12, W11, W10, W9}
-    VMOVDQU X3, YMMWORD PTR [MSG + 14 * 4]  ; X3 = {00, 00, 00, 00, 00, 00, W15, W14}
-    VPSRLD  Y0, X1, 7                       ; Y0 = X1 >> 7
-    VPSLLD  Y1, X1, 32 - 7                  ; Y1 = X1 << 25
-    VPSRLD  Y2, X1, 18                      ; Y2 = X1 >> 18
-    VPSLLD  Y3, X1, 32 - 18                 ; Y3 = X1 << 14
-    VPSRLD  Y4, X1, 3                       ; Y4 = X1 >> 3
+    VMOVDQA X0, YMMWORD PTR [MSG + 0 * 4]   ; X0 = [W7, W6, W5, W4, W3, W2, W1, W0]
+    VMOVDQU X1, YMMWORD PTR [MSG + 1 * 4]   ; X1 = [W8, W7, W6, W5, W4, W3, W2, W1]
+    VMOVDQU X2, YMMWORD PTR [MSG + 9 * 4]   ; X2 = [00, W15, W14, W13, W12, W11, W10, W9]
+    VMOVDQU X3, YMMWORD PTR [MSG + 14 * 4]  ; X3 = [00, 00, 00, 00, 00, 00, W15, W14]
+    VPSRLD  Y0, X1, 7                       ; Y0 = [W8, W7, W6, W5, W4, W3, W2, W1] >> 7
+    VPSLLD  Y1, X1, 32 - 7                  ; Y1 = [W8, W7, W6, W5, W4, W3, W2, W1] << 25
+    VPSRLD  Y2, X1, 18                      ; Y2 = [W8, W7, W6, W5, W4, W3, W2, W1] >> 18
+    VPSLLD  Y3, X1, 32 - 18                 ; Y3 = [W8, W7, W6, W5, W4, W3, W2, W1] << 14
+    VPSRLD  Y4, X1, 3                       ; Y4 = [W8, W7, W6, W5, W4, W3, W2, W1] >> 3
 
-    VPOR    Y0, Y0, Y1
-    VPOR    Y2, Y2, Y3
-    VPXOR   Y0, Y0, Y2
-    VPXOR   Y0, Y0, Y4
+    VPOR    Y0, Y0, Y1                      ; Y0 = [W8, W7, W6, W5, W4, W3, W2, W1] >>> 7
+    VPOR    Y2, Y2, Y3                      ; Y2 = [W8, W7, W6, W5, W4, W3, W2, W1] >>> 18
+    VPXOR   Y0, Y0, Y2                      ; Y0 = ([W8, W7, W6, W5, W4, W3, W2, W1] >>> 7) ^ ([W8, W7, W6, W5, W4, W3, W2, W1] >>> 18)
+    VPXOR   Y0, Y0, Y4                      ; Y0 = sigma0 = ([W8, W7, W6, W5, W4, W3, W2, W1] >>> 7) ^ ([W8, W7, W6, W5, W4, W3, W2, W1] >>> 18) ^ ([W8, W7, W6, W5, W4, W3, W2, W1] >> 3)
 
-    VPSRLD  Y5, X3, 17                      ; Y5 = X3 >> 17
-    VPSLLD  Y6, X3, 32 - 17                 ; Y6 = X3 << 15
-    VPSRLD  Y7, X3, 19                      ; Y7 = X3 >> 19
-    VPSLLD  Y8, X3, 32 - 19                 ; Y8 = X3 << 13
-    VPSRLD  Y9, X3, 10                      ; Y9 = X3 >> 10
+    VPSRLD  Y5, X3, 17                      ; Y5 = [00, 00, 00, 00, 00, 00, W15, W14] >> 17
+    VPSLLD  Y6, X3, 32 - 17                 ; Y6 = [00, 00, 00, 00, 00, 00, W15, W14] << 15
+    VPSRLD  Y7, X3, 19                      ; Y7 = [00, 00, 00, 00, 00, 00, W15, W14] >> 19
+    VPSLLD  Y8, X3, 32 - 19                 ; Y8 = [00, 00, 00, 00, 00, 00, W15, W14] << 13
+    VPSRLD  Y9, X3, 10                      ; Y9 = [00, 00, 00, 00, 00, 00, W15, W14] >> 10
 
-    VPOR    Y5, Y5, Y6
-    VPOR    Y7, Y7, Y8
-    VPXOR   Y5, Y5, Y7
-    VPXOR   Y5, Y5, Y9
+    VPOR    Y5, Y5, Y6                      ; Y5 = [00, 00, 00, 00, 00, 00, W15, W14] >>> 17
+    VPOR    Y7, Y7, Y8                      ; Y7 = [00, 00, 00, 00, 00, 00, W15, W14] >>> 19
+    VPXOR   Y5, Y5, Y7                      ; Y5 = ([00, 00, 00, 00, 00, 00, W15, W14] >>> 17) ^ ([00, 00, 00, 00, 00, 00, W15, W14] >>> 19)
+    VPXOR   Y5, Y5, Y9                      ; Y5 = sigma1 = ([00, 00, 00, 00, 00, 00, W15, W14] >>> 17) ^ ([00, 00, 00, 00, 00, 00, W15, W14] >>> 19) ^ ([00, 00, 00, 00, 00, 00, W15, W14] >> 10)
 
-    VPADDD  X0, X0, X2
-    VPADDD  Y0, Y0, Y5
-    VPADDD  X0, X0, Y0
+    VPADDD  X0, X0, X2                      ; X0 = [W7, W6, W5, W4, W3, W2, W1, W0] + [00, W15, W14, W13, W12, W11, W10, W9]
+    VPADDD  Y0, Y0, Y5                      ; Y0 = sigma0 + sigma1
+    VPADDD  X0, X0, Y0                      ; X0 = 
 
     VMOVDQA SHUF, YMMWORD PTR [SHUF_0000XX00]
-    VPSHUFB Y0, X0, SHUF
-    VPADDD  X0, X0, Y0
+    VPSHUFB Y0, X0, SHUF                        ; Y0 = [00, 00, 00, 00, W1, W0, 00, 00]
+    
+    VPSRLD  Y5, Y0, 17                      ; Y5 = [00, 00, 00, 00, W1, W0, 00, 00] >> 17
+    VPSLLD  Y6, Y0, 32 - 17                 ; Y6 = [00, 00, 00, 00, W1, W0, 00, 00] << 15
+    VPSRLD  Y7, Y0, 19                      ; Y7 = [00, 00, 00, 00, W1, W0, 00, 00] >> 19
+    VPSLLD  Y8, Y0, 32 - 19                 ; Y8 = [00, 00, 00, 00, W1, W0, 00, 00] << 13
+    VPSRLD  Y9, Y0, 10                      ; Y9 = [00, 00, 00, 00, W1, W0, 00, 00] >> 10
+    
+    VPOR    Y5, Y5, Y6                      ; Y5 = [00, 00, 00, 00, W1, W0, 00, 00] >>> 17
+    VPOR    Y7, Y7, Y8                      ; Y7 = [00, 00, 00, 00, W1, W0, 00, 00] >>> 19
+    VPXOR   Y5, Y5, Y7                      ; Y5 = ([00, 00, 00, 00, W1, W0, 00, 00] >>> 17) ^ ([00, 00, 00, 00, W1, W0, 00, 00] >>> 19)
+    VPXOR   Y5, Y5, Y9                      ; Y5 = sigma1 = ([00, 00, 00, 00, W1, W0, 00, 00] >>> 17) ^ ([00, 00, 00, 00, W1, W0, 00, 00] >>> 19) ^ ([00, 00, 00, 00, W1, W0, 00, 00] >> 10)
+
+    VPADDD  X0, X0, Y5
     
     ;;MOV EAX, SHUFFLE_BYTE_FLIP_MASK
     ;MOVDQA   XMM1, XMMWORD PTR [SHUFFLE_BYTE_FLIP_MASK]
